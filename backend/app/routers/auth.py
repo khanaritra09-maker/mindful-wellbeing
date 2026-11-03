@@ -28,7 +28,7 @@ def verify_origin(request: Request) -> None:
 
 def set_session_cookies(response: Response, token: str, csrf_token: str, expires_in: int) -> None:
     settings = get_settings()
-    common = {"max_age": expires_in, "secure": settings.secure_cookies, "samesite": "lax"}
+    common = {"max_age": expires_in, "secure": settings.secure_cookies, "samesite": settings.session_cookie_samesite}
     response.set_cookie(SESSION_COOKIE, token, httponly=True, path="/api/v1", **common)
     response.set_cookie(CSRF_COOKIE, csrf_token, httponly=False, path="/", **common)
 
@@ -65,8 +65,8 @@ def logout(response: Response, db: Session = Depends(get_db), user: User = Depen
     user.token_version += 1
     db.commit()
     settings = get_settings()
-    response.delete_cookie(SESSION_COOKIE, path="/api/v1", secure=settings.secure_cookies, httponly=True, samesite="lax")
-    response.delete_cookie(CSRF_COOKIE, path="/", secure=settings.secure_cookies, httponly=False, samesite="lax")
+    response.delete_cookie(SESSION_COOKIE, path="/api/v1", secure=settings.secure_cookies, httponly=True, samesite=settings.session_cookie_samesite)
+    response.delete_cookie(CSRF_COOKIE, path="/", secure=settings.secure_cookies, httponly=False, samesite=settings.session_cookie_samesite)
 
 
 @router.post("/auth/change-password", status_code=status.HTTP_204_NO_CONTENT)
@@ -198,5 +198,5 @@ def delete_account(payload: AccountDeletionRequest, request: Request, response: 
     for path in audio_paths:
         path.unlink(missing_ok=True)
     settings = get_settings()
-    response.delete_cookie(SESSION_COOKIE, path="/api/v1", secure=settings.secure_cookies, httponly=True, samesite="lax")
-    response.delete_cookie(CSRF_COOKIE, path="/", secure=settings.secure_cookies, httponly=False, samesite="lax")
+    response.delete_cookie(SESSION_COOKIE, path="/api/v1", secure=settings.secure_cookies, httponly=True, samesite=settings.session_cookie_samesite)
+    response.delete_cookie(CSRF_COOKIE, path="/", secure=settings.secure_cookies, httponly=False, samesite=settings.session_cookie_samesite)

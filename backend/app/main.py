@@ -1,15 +1,19 @@
 from uuid import uuid4
 
 from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 from .config import get_settings
 from .errors import install_error_handlers
 from .limits import limiter
+from .database import engine
 from .routers import activities, admin, auth, checkins, journal
 
 
@@ -46,4 +50,9 @@ for route_module in (auth, checkins, journal, activities, admin):
 
 @app.get("/health", tags=["Operations"])
 def health():
-    return {"status": "ok", "service": "mindful-api"}
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+    except SQLAlchemyError:
+        return JSONResponse(status_code=503, content={"status": "unavailable", "service": "mindful-api"})
+    return {"status": "ok", "service": "mindful-api", "database": "ok"}

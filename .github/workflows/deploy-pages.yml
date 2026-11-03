@@ -1,0 +1,56 @@
+name: Deploy Mindful to GitHub Pages
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate API URL and stage static site
+        env:
+          MINDFUL_API_BASE: ${{ vars.MINDFUL_API_BASE }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from urllib.parse import urlsplit
+
+          value = os.environ.get("MINDFUL_API_BASE", "").strip().rstrip("/")
+          parsed = urlsplit(value)
+          if parsed.scheme != "https" or not parsed.netloc or parsed.username or parsed.password or parsed.query or parsed.fragment or not parsed.path.rstrip("/").endswith("/api/v1"):
+              raise SystemExit("Set the repository Actions variable MINDFUL_API_BASE to the real HTTPS API URL ending in /api/v1.")
+          if parsed.hostname in {"localhost", "127.0.0.1", "::1"}:
+              raise SystemExit("MINDFUL_API_BASE must not point to a local address.")
+
+          import shutil
+          output = Path("_site")
+          output.mkdir()
+          for name in ("index.html", "auth.js", "app.js", "roles.js", "styles.css"):
+              shutil.copy2(name, output / name)
+          index = output / "index.html"
+          html = index.read_text(encoding="utf-8")
+          old = '<meta name="mindful-api-base" content="">'
+          if html.count(old) != 1:
+              raise SystemExit("Could not find exactly one API base meta tag in index.html.")
+          index.write_text(html.replace(old, f'<meta name="mindful-api-base" content="{value}">'), encoding="utf-8")
+          PY
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -22,6 +23,7 @@ class Settings(BaseSettings):
     voice_storage_path: Path = Path.home() / ".mindful" / "private_voice_samples"
     access_token_minutes: int = Field(default=20, ge=5, le=120)
     cookie_secure: bool | None = None
+    session_cookie_samesite: Literal["lax", "none"] = "lax"
     frontend_origins: str = "http://localhost:5500,http://127.0.0.1:5500"
     max_voice_sample_bytes: int = Field(default=10 * 1024 * 1024, ge=1024, le=50 * 1024 * 1024)
     consent_text_version: str = "voice-sample-consent-v2"
@@ -54,6 +56,8 @@ class Settings(BaseSettings):
                 raise ValueError("Production PostgreSQL connections must verify TLS certificates")
             if not self.secure_cookies:
                 raise ValueError("Production requires Secure cookies")
+            if self.session_cookie_samesite == "none" and not self.secure_cookies:
+                raise ValueError("SameSite=None cookies require Secure")
             if self.rate_limit_storage_uri.startswith("memory:"):
                 raise ValueError("Production requires shared Redis rate-limit storage")
             if not self.rate_limit_storage_uri.startswith("rediss://"):

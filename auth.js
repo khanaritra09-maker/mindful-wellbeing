@@ -1,10 +1,20 @@
 (() => {
   'use strict';
 
-  // The backend's documented local port is 8001. Derive the host from the
-  // page so localhost and 127.0.0.1 remain same-site for session cookies.
   const configuredApiBase = document.querySelector('meta[name="mindful-api-base"]')?.content?.trim();
-  const apiBase = (configuredApiBase || `http://${window.location.hostname || 'localhost'}:8001/api/v1`).replace(/\/$/, '');
+  const hostname = window.location.hostname.toLowerCase();
+  const isLocalPage = ['localhost', '127.0.0.1', '::1'].includes(hostname);
+  const apiBase = (configuredApiBase || (isLocalPage ? `http://${hostname}:8001/api/v1` : '')).replace(/\/$/, '');
+  const apiBaseError = (() => {
+    if (!apiBase) return 'Sign-in is not configured for this website. Set its HTTPS API address and reload.';
+    try {
+      const url = new URL(apiBase);
+      if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash || !url.pathname.replace(/\/$/, '').endsWith('/api/v1')) return 'The sign-in service address is invalid. Contact the site administrator.';
+      if (window.location.protocol === 'https:' && url.protocol !== 'https:') return 'The sign-in service must use HTTPS on this website.';
+      if (!isLocalPage && ['localhost', '127.0.0.1', '::1'].includes(url.hostname)) return 'The sign-in service address is invalid. Contact the site administrator.';
+      return '';
+    } catch (_) { return 'The sign-in service address is invalid. Contact the site administrator.'; }
+  })();
   const loginGate = document.querySelector('#login-gate');
   const shell = document.querySelector('.shell');
   if (loginGate && !loginGate.hidden) shell?.classList.add('auth-mode');
@@ -24,6 +34,7 @@
   }
 
   async function request(path, options = {}) {
+    if (apiBaseError) throw new Error(apiBaseError);
     const method = (options.method || 'GET').toUpperCase();
     const responseType = options.responseType;
     const fetchOptions = { ...options };
@@ -42,22 +53,19 @@
     }
     if (response.status === 204) return null;
     if (responseType === 'blob' && response.ok) return response.blob();
-    const payload = await response.json().catch(() => ({}));
+    const payload = await response.json().catch(() => null);
    if (!response.ok) {
-      console.error('Mindful API Error:', {
-        url: `${apiBase}${path}`,
-        status: response.status,
-        response: payload
-      });
 
       const detail = payload?.detail;
       const message =
         typeof detail === 'string'
           ? detail
-          : detail?.message || JSON.stringify(detail) || `HTTP error ${response.status}`;
+          : detail?.message || (response.status === 429 ? 'Too many attempts. Wait a moment and try again.' : `The sign-in service returned an error (${response.status}).`);
 
       throw new Error(message);
     }
+
+    if (payload === null) throw new Error('The sign-in service returned an unreadable response. Try again later.');
 
     return payload;
   }
@@ -177,6 +185,7 @@
       }
       throw error;
     }
+    if (!session?.user?.id || !['user', 'admin'].includes(session.user.role)) throw new Error('The sign-in service returned an invalid account response.');
     await loadProtectedExperience(session.user);
   }
 
